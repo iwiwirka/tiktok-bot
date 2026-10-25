@@ -28,34 +28,35 @@ def home():
 def send_welcome(message):
   bot.reply_to(
       message,
-      "Привет! Теперь бот автоматически забирает реальные просмотры и лайки с"
-      " TikTok по ссылкам. Скинь список ссылок!",
+      "Привет! Скинь мне список видео (каждое с новой строки) в формате:\n"
+      "`ссылка просмотры лайки избранное`\n\nПример:\n`https://tiktok.com/... 5000"
+      " 150 20`",
+      parse_mode="Markdown",
   )
 
 
-@bot.message_handler(func=lambda message: "tiktok.com" in message.text)
-def handle_tiktok_links(message):
-  links = re.findall(r"https?://[^\s]+tiktok[^\s]+", message.text)
-  if not links:
-    bot.reply_to(message, "Не нашел ссылок TikTok в сообщении.")
-    return
-
-  report_text = "📊 **Анализ реальных данных и расчет накрутки:**\n\n"
+@bot.message_handler(
+    func=lambda message: "tiktok.com" in message.text and "http" in message.text
+)
+def handle_batch_input(message):
+  lines = message.text.strip().split("\n")
+  report_text = "📊 **Анализ и расчет накрутки:**\n\n"
   calculations = []
 
-  for i, link in enumerate(links[:10], 1):
-    # Автоматически получаем реальные показатели видео через публичный API
-    current_views = 0
-    current_likes = 0
-    try:
-      api_url = f"https://www.tikwm.com/api/?url={link}"
-      response = requests.get(api_url, timeout=5).json()
-      if response.get("code") == 0 and "data" in response:
-        data = response["data"]
-        current_views = int(data.get("play_count", 0))
-        current_likes = int(data.get("digg_count", 0))
-    except Exception as e:
-      print(f"Ошибка получения данных: {e}")
+  for idx, line in enumerate(lines[:10], 1):
+    # Ищем ссылку в строке
+    link_match = re.search(r"https?://[^\s]+tiktok[^\s]+", line)
+    if not link_match:
+      continue
+
+    link = link_match.group(0)
+
+    # Ищем все числа в оставшейся части строки
+    numbers = re.findall(r"\d+", line.replace(link, ""))
+
+    current_views = int(numbers[0]) if len(numbers) > 0 else 0
+    current_likes = int(numbers[1]) if len(numbers) > 1 else 0
+    current_favs = int(numbers[2]) if len(numbers) > 2 else 0
 
     # Целевые диапазоны с рандомом
     target_views = random.randint(7500, 8500)
@@ -65,21 +66,31 @@ def handle_tiktok_links(message):
     need_likes = max(0, target_likes - current_likes)
 
     calculations.append({"link": link, "views": need_views, "likes": need_likes})
+
     report_text += (
-        f"**Видео {i}**\n"
+        f"**Видео {idx}**\n"
         f"🔗 {link}\n"
-        f"• Просмотры: сейчас **{current_views}** (цель ~{target_views}) |"
-        f" докупить: **{need_views}**\n"
-        f"• Лайки: сейчас **{current_likes}** (цель ~{target_likes}) | докупить:"
-        f" **{need_likes}**\n\n"
+        f"• Просмотры: {current_views} (цель ~{target_views}) | докупить:"
+        f" **{need_views}**\n"
+        f"• Лайки: {current_likes} (цель ~{target_likes}) | докупить:"
+        f" **{need_likes}**\n"
+        f"• Избранное: {current_favs}\n\n"
     )
 
+  if not calculations:
+    bot.reply_to(
+        message, "⚠️ Не удалось распознать формат. Проверьте пример и повторите."
+    )
+    return
+
   user_calculations[message.chat.id] = calculations
+
   markup = telebot.types.InlineKeyboardMarkup()
   btn = telebot.types.InlineKeyboardButton(
       "🚀 Отправить заказы в VexBoost", callback_data="send_orders"
   )
   markup.add(btn)
+
   bot.send_message(message.chat.id, report_text, reply_markup=markup)
 
 
