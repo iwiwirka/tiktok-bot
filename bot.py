@@ -12,7 +12,7 @@ BOT_TOKEN = "8907166799:AAHGfIk4wcl1mNFhgRl-B9JjRHYEWXVG3Hw"
 VEXBOOST_API_URL = "https://vexboost.ru/api/v2"
 VEXBOOST_KEY = "Y2qXohHbsChY0qHBrTBD6CiOlboYAALW5sSW1nkkCr8qlPjmNHXnpLqUqJX4"
 SERVICE_LIKES = 2904
-SERVICE_VIEWS = 2915  # Новый ID просмотров
+SERVICE_VIEWS = 2915
 
 # Настройки Социограм (Избранное)
 SOCIOGRAMM_API_URL = "https://sociogramm.ru/panel/api/v1"
@@ -61,20 +61,16 @@ def handle_batch_input(message):
     current_likes = int(numbers[1]) if len(numbers) > 1 else 0
     current_favs = int(numbers[2]) if len(numbers) > 2 else 0
 
-    # Целевые диапазоны с рандомом
     target_views = random.randint(7500, 8500)
     target_likes = random.randint(240, 360)
-    target_favs = random.randint(25, 45)  к  # Цель по избранному: 25-45
+    target_favs = random.randint(25, 45)
 
     need_views = max(0, target_views - current_views)
     need_likes = max(0, target_likes - current_likes)
 
-    # Расчет избранного с учетом минимального заказа (10) и диапазона 25-45
     need_favs = max(0, target_favs - current_favs)
     if 0 < need_favs < 10:
-      need_favs = (
-          10  # Если не хватает меньше 10, подтягиваем до мин. заказа сервиса
-      )
+      need_favs = 10
 
     calculations.append({
         "link": link,
@@ -129,7 +125,6 @@ def callback_send_orders(call):
     likes = item["likes"]
     favs = item["favs"]
 
-    # 1. Заказ просмотров на VexBoost (ID 2915)
     if views > 0:
       try:
         r = requests.get(
@@ -150,7 +145,6 @@ def callback_send_orders(call):
       except:
         error_occurred = True
 
-    # 2. Заказ лайков на VexBoost (ID 2904)
     if likes > 0:
       try:
         r = requests.get(
@@ -171,7 +165,6 @@ def callback_send_orders(call):
       except:
         error_occurred = True
 
-    # 3. Заказ избранного на Социограм (ID 558)
     if favs > 0:
       try:
         r = requests.get(
@@ -193,11 +186,10 @@ def callback_send_orders(call):
         error_occurred = True
 
   bot.answer_callback_query(call.id, "Заказы обработаны!")
-  status_text = f"✅ **Готово! Успешных успешных отправок:** {success_count}"
+  status_text = f"✅ **Готово! Успешных отправок:** {success_count}"
   if error_occurred:
     status_text += (
-        "\n⚠️ Внимание: часть запросов не прошла (проверьте балансы на"
-        " сервисах)."
+        "\n⚠️ Внимание: часть запросов не прошла (проверьте балансы)."
     )
   bot.edit_message_text(status_text, chat_id, call.message.message_id)
 
