@@ -7,11 +7,17 @@ import requests
 import telebot
 
 BOT_TOKEN = "8907166799:AAHGfIk4wcl1mNFhgRl-B9JjRHYEWXVG3Hw"
+
+# Настройки VexBoost (Просмотры и Лайки)
 VEXBOOST_API_URL = "https://vexboost.ru/api/v2"
 VEXBOOST_KEY = "Y2qXohHbsChY0qHBrTBD6CiOlboYAALW5sSW1nkkCr8qlPjmNHXnpLqUqJX4"
-
 SERVICE_LIKES = 2904
-SERVICE_VIEWS = 3129
+SERVICE_VIEWS = 2915  # Новый ID просмотров
+
+# Настройки Социограм (Избранное)
+SOCIOGRAMM_API_URL = "https://sociogramm.ru/panel/api/v1"
+SOCIOGRAMM_KEY = "BdeES2VrR9DGGS2JGKuRpstFsboao8PI"
+SERVICE_FAVORS = 558
 
 bot = telebot.TeleBot(BOT_TOKEN)
 user_calculations = {}
@@ -29,8 +35,8 @@ def send_welcome(message):
   bot.reply_to(
       message,
       "Привет! Скинь мне список видео (каждое с новой строки) в формате:\n"
-      "`ссылка просмотры лайки избранное`\n\nПример:\n`https://tiktok.com/... 5000"
-      " 150 20`",
+      "`ссылка просмотры лайки избранное`\n\nПример:\n"
+      "`https://tiktok.com/... 5000 150 20`",
       parse_mode="Markdown",
   )
 
@@ -40,18 +46,15 @@ def send_welcome(message):
 )
 def handle_batch_input(message):
   lines = message.text.strip().split("\n")
-  report_text = "📊 **Анализ и расчет накрутки:**\n\n"
+  report_text = "📊 **Анализ и расчет накрутки (VexBoost + Социограм):**\n\n"
   calculations = []
 
   for idx, line in enumerate(lines[:10], 1):
-    # Ищем ссылку в строке
     link_match = re.search(r"https?://[^\s]+tiktok[^\s]+", line)
     if not link_match:
       continue
 
     link = link_match.group(0)
-
-    # Ищем все числа в оставшейся части строки
     numbers = re.findall(r"\d+", line.replace(link, ""))
 
     current_views = int(numbers[0]) if len(numbers) > 0 else 0
@@ -61,11 +64,24 @@ def handle_batch_input(message):
     # Целевые диапазоны с рандомом
     target_views = random.randint(7500, 8500)
     target_likes = random.randint(240, 360)
+    target_favs = random.randint(25, 45)  к  # Цель по избранному: 25-45
 
     need_views = max(0, target_views - current_views)
     need_likes = max(0, target_likes - current_likes)
 
-    calculations.append({"link": link, "views": need_views, "likes": need_likes})
+    # Расчет избранного с учетом минимального заказа (10) и диапазона 25-45
+    need_favs = max(0, target_favs - current_favs)
+    if 0 < need_favs < 10:
+      need_favs = (
+          10  # Если не хватает меньше 10, подтягиваем до мин. заказа сервиса
+      )
+
+    calculations.append({
+        "link": link,
+        "views": need_views,
+        "likes": need_likes,
+        "favs": need_favs,
+    })
 
     report_text += (
         f"**Видео {idx}**\n"
@@ -74,7 +90,8 @@ def handle_batch_input(message):
         f" **{need_views}**\n"
         f"• Лайки: {current_likes} (цель ~{target_likes}) | докупить:"
         f" **{need_likes}**\n"
-        f"• Избранное: {current_favs}\n\n"
+        f"• Избранное: {current_favs} (цель ~{target_favs}) | докупить:"
+        f" **{need_favs}**\n\n"
     )
 
   if not calculations:
@@ -87,7 +104,8 @@ def handle_batch_input(message):
 
   markup = telebot.types.InlineKeyboardMarkup()
   btn = telebot.types.InlineKeyboardButton(
-      "🚀 Отправить заказы в VexBoost", callback_data="send_orders"
+      "🚀 Отправить заказы (VexBoost + Социограм)",
+      callback_data="send_orders",
   )
   markup.add(btn)
 
@@ -109,7 +127,9 @@ def callback_send_orders(call):
     link = item["link"]
     views = item["views"]
     likes = item["likes"]
+    favs = item["favs"]
 
+    # 1. Заказ просмотров на VexBoost (ID 2915)
     if views > 0:
       try:
         r = requests.get(
@@ -122,14 +142,15 @@ def callback_send_orders(call):
                 "quantity": views,
             },
             timeout=10,
-        )
-        if "order" in r.json():
+        ).json()
+        if "order" in r:
           success_count += 1
         else:
           error_occurred = True
       except:
         error_occurred = True
 
+    # 2. Заказ лайков на VexBoost (ID 2904)
     if likes > 0:
       try:
         r = requests.get(
@@ -142,8 +163,29 @@ def callback_send_orders(call):
                 "quantity": likes,
             },
             timeout=10,
-        )
-        if "order" in r.json():
+        ).json()
+        if "order" in r:
+          success_count += 1
+        else:
+          error_occurred = True
+      except:
+        error_occurred = True
+
+    # 3. Заказ избранного на Социограм (ID 558)
+    if favs > 0:
+      try:
+        r = requests.get(
+            SOCIOGRAMM_API_URL,
+            params={
+                "key": SOCIOGRAMM_KEY,
+                "action": "add",
+                "service": SERVICE_FAVORS,
+                "link": link,
+                "quantity": favs,
+            },
+            timeout=10,
+        ).json()
+        if "order" in r or r.get("status") == "success":
           success_count += 1
         else:
           error_occurred = True
@@ -151,10 +193,11 @@ def callback_send_orders(call):
         error_occurred = True
 
   bot.answer_callback_query(call.id, "Заказы обработаны!")
-  status_text = f"✅ **Готово! Успешных заказов:** {success_count}"
+  status_text = f"✅ **Готово! Успешных успешных отправок:** {success_count}"
   if error_occurred:
     status_text += (
-        "\n⚠️ Внимание: часть запросов не прошла (проверь баланс на сайте)."
+        "\n⚠️ Внимание: часть запросов не прошла (проверьте балансы на"
+        " сервисах)."
     )
   bot.edit_message_text(status_text, chat_id, call.message.message_id)
 
