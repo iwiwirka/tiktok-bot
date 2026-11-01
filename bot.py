@@ -117,14 +117,15 @@ def callback_send_orders(call):
 
   calculations = user_calculations[chat_id]
   success_count = 0
-  error_occurred = False
+  failed_items = []
 
-  for item in calculations:
+  for idx, item in enumerate(calculations, 1):
     link = item["link"]
     views = item["views"]
     likes = item["likes"]
     favs = item["favs"]
 
+    # 1. Просмотры (VexBoost)
     if views > 0:
       try:
         r = requests.get(
@@ -141,10 +142,11 @@ def callback_send_orders(call):
         if "order" in r:
           success_count += 1
         else:
-          error_occurred = True
+          failed_items.append(f"Видео {idx}: Просмотры ({views} шт.)")
       except:
-        error_occurred = True
+        failed_items.append(f"Видео {idx}: Просмотры (ошибка сети)")
 
+    # 2. Лайки (VexBoost)
     if likes > 0:
       try:
         r = requests.get(
@@ -161,10 +163,11 @@ def callback_send_orders(call):
         if "order" in r:
           success_count += 1
         else:
-          error_occurred = True
+          failed_items.append(f"Видео {idx}: Лайки ({likes} шт.)")
       except:
-        error_occurred = True
+        failed_items.append(f"Видео {idx}: Лайки (ошибка сети)")
 
+    # 3. Избранное (Социограм)
     if favs > 0:
       try:
         r = requests.get(
@@ -181,16 +184,19 @@ def callback_send_orders(call):
         if "order" in r or r.get("status") == "success":
           success_count += 1
         else:
-          error_occurred = True
+          failed_items.append(f"Видео {idx}: Избранное ({favs} шт.)")
       except:
-        error_occurred = True
+        failed_items.append(f"Видео {idx}: Избранное (ошибка сети)")
 
   bot.answer_callback_query(call.id, "Заказы обработаны!")
-  status_text = f"✅ **Готово! Успешных отправок:** {success_count}"
-  if error_occurred:
+
+  status_text = f"✅ **Успешно отправлено заказов:** {success_count}\n"
+  if failed_items:
     status_text += (
-        "\n⚠️ Внимание: часть запросов не прошла (проверьте балансы)."
+        "\n❌ **Не удалось отправить (проверь баланс):**\n"
+        + "\n".join([f"• {err}" for err in failed_items])
     )
+
   bot.edit_message_text(status_text, chat_id, call.message.message_id)
 
 
